@@ -1,8 +1,9 @@
 /** Resolve packaged Office engine manifests from their complete, unpacked resource directories. */
-import { registerHooks, type ModuleHooks } from 'node:module'
+import { createRequire, registerHooks, syncBuiltinESMExports, type ModuleHooks } from 'node:module'
 import { realpathSync } from 'node:fs'
 import { basename, dirname, join, relative } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { restoreMissingArchiveEntryResults } from './archive-fs.ts'
 
 /**
  * Locate the archive containing a packaged runtime.
@@ -22,6 +23,9 @@ export function runtimeArchivePath(runtimeDir: string): string | undefined {
  */
 export function installOfficeEngineResolution(runtimeDir: string): ModuleHooks | undefined {
   if (runtimeArchivePath(runtimeDir) === undefined) return undefined
+  // The probe for a missing native engine package runs inside the archive, where Electron's fs
+  // reports absent entries as null; restore Node's undefined so Linux falls back to WebAssembly.
+  restoreMissingArchiveEntryResults(createRequire(import.meta.url)('node:fs'), syncBuiltinESMExports)
   const root = realpathSync(runtimeDir)
   const archive = dirname(root)
   const source = pathToFileURL(join(root, 'node_modules', '@deepseek-ai', 'libreoffice-kit-')).href

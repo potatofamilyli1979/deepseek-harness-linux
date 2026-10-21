@@ -262,7 +262,8 @@ it.each([false, true])('starts welcome onboarding without carrying update focus 
   expect(state.menu).toHaveBeenCalledTimes(initialMenus)
   changed(event, 'en')
   expect(state.dialogLocale!().id).toBe('en')
-  expect(state.menu).toHaveBeenCalledTimes(initialMenus + 1)
+  // Linux installs no application menu, so a locale change rebuilds nothing there.
+  expect(state.menu).toHaveBeenCalledTimes(process.platform === 'linux' ? initialMenus : initialMenus + 1)
   expect(await bootstrap(event)).toEqual({ languages: ['en-US'], preference: 'en' })
   const welcomeCount = state.beforeWelcome.mock.calls.length
   state.hasApiKey = true

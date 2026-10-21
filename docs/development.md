@@ -193,6 +193,16 @@ pnpm run dev:desktop     # build, then launch Desktop
 
 Arguments after a Web command reach `dsh web`, for example `pnpm run dev:web --no-open --port 3081`; `dev:web` also accepts `--skip-build` to reuse the existing artifact tree and `--no-serve` to run only the rebuild watchers beside a server started elsewhere. Both Web commands use the normal Harness home, while the Desktop commands use the isolated development home described in the [Desktop README](../apps/desktop/README.md). The root `Makefile` names the same commands as `make web`, `make dev-web`, `make desktop`, `make dev-desktop`, and `make build`; `ARGS='--no-open'` forwards options.
 
+### Desktop packaging
+
+Desktop installers are packaged per fixed target through the Desktop application's own scripts. macOS and Windows releases keep their signing and publication steps in the [Desktop README](../apps/desktop/README.md); Linux builds locally without code signing or update publication and emits an AppImage:
+
+```sh
+pnpm --filter @deepseek-ai/dsh-desktop run package:linux:x64
+```
+
+The artifact lands in `apps/desktop/.desktop-build/targets/linux-x64/unsigned-artifacts`, and `package:linux:x64:dir` stops at the unpacked `linux-unpacked` application instead of the AppImage. Linux ships sharp’s WebAssembly engine because its native build would mix its own GLib with the GLib Electron loads for GTK. The AppImage names its desktop entry `com.deepseek.harness.desktop` and marks the window `StartupWMClass=com.deepseek.harness`; a manually installed launcher must use that file name and field, because GNOME matches the running window, and therefore its icon, by that identity.
+
 ### TODO markers
 
 Use one of three comment tags to flag known issues in the code, ordered by urgency:

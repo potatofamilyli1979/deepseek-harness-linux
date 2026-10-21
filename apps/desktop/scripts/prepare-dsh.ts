@@ -43,7 +43,8 @@ const STORE_ROOT = join(BUILD_ROOT, 'store')
 const RUNTIME_ROOT = BUILD_PATHS.runtime
 const PNPM_BUILD_STATE = BUILD_PATHS.dshPnpm
 const PACKAGE_SET_ROOT = BUILD_PATHS.packageSet
-const NODE = join(BUILD_PATHS.electron, process.platform === 'win32' ? 'electron.exe' : 'Electron.app/Contents/MacOS/Electron')
+const NODE = join(BUILD_PATHS.electron, process.platform === 'win32'
+  ? 'electron.exe' : process.platform === 'darwin' ? 'Electron.app/Contents/MacOS/Electron' : 'electron')
 const PNPM = join(RUNTIME_ROOT, 'primary-runtime', 'dependencies', 'pnpm', 'bin', 'pnpm.mjs')
 
 function manifestVersion(path: string, subject: string): string {
@@ -66,6 +67,21 @@ function desktopRelease(): DesktopRelease {
     nodeVersion: runtime.node,
     pnpmVersion: runtime.pnpm,
   })
+}
+
+/**
+ * Linux ships sharp's WebAssembly engine because the native build's bundled GLib conflicts with the
+ * GLib Electron loads for GTK; adding the engine here keeps that substitution inside the Desktop runtime.
+ * @param projectDir - Runtime project whose manifest drives the production install.
+ * @param platform - Target platform of the packaged runtime.
+ */
+function addLinuxImageRuntime(projectDir: string, platform: NodeJS.Platform): void {
+  if (platform !== 'linux') return
+  const manifestPath = join(projectDir, 'package.json')
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { dependencies?: Record<string, string> }
+  const { version } = JSON.parse(readFileSync(join(APP_ROOT, 'node_modules', 'sharp', 'package.json'), 'utf8')) as { version: string }
+  manifest.dependencies = { ...manifest.dependencies, '@img/sharp-wasm32': version }
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, undefined, 2)}\n`)
 }
 
 function runPnpm(args: readonly string[]): Promise<void> {
@@ -123,6 +139,7 @@ async function main(): Promise<void> {
       copyFileSync(join(PACKAGE_SET_ROOT, DESKTOP_PACKAGE_SET_FILE), join(BUILD_ROOT, DESKTOP_PACKAGE_SET_FILE))
       cpSync(join(PACKAGE_SET_ROOT, DESKTOP_PACKAGES_DIR), join(BUILD_ROOT, DESKTOP_PACKAGES_DIR), { recursive: true })
       createRuntimeProjectMetadata(BUILD_ROOT, release)
+      addLinuxImageRuntime(BUILD_ROOT, desktopTargetPlatform(resolveDesktopBuildTarget()).platform)
       return prepareRuntimePatches(BUILD_ROOT, resolve(APP_ROOT, '..', '..'))
     })
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:lockfile', () => runPnpm(['install', '--lockfile-only']))

@@ -44,5 +44,12 @@ export function desktopRuntimeFileExclusion(
     if (file.endsWith('.pdb')) return 'node-pty debug symbols'
   }
   if (name === '@koromix/koffi-win32-x64' && entry === 'win32_x64/koffi.lib') return 'Koffi import library'
+  // sharp's prebuilt Linux libvips bundles its own GLib, but Electron's GTK dependency exports a
+  // different GLib into the same process, which corrupts image decoding. Keeping only the manifest
+  // shadows ancestor installations while sharp falls back to its WebAssembly engine.
+  if (entry !== '' && entry !== 'package.json' && target.platform === 'linux'
+    && /^@img\/sharp(?:-libvips)?-linux(?:musl)?-(?:x64|arm64|arm|ppc64|riscv64|s390x)$/u.test(name)) {
+    return 'sharp native engine conflicts with Electron GLib'
+  }
   return undefined
 }

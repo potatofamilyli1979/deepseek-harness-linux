@@ -50,6 +50,13 @@ export interface DesktopElectronBuilderConfig {
     readonly allowToChangeInstallationDirectory: false
     readonly installerLanguages: readonly ['en_US', 'zh_CN']
   }
+  readonly linux: {
+    readonly icon: string
+    readonly category: string
+    readonly executableName: string
+    readonly syncDesktopName: true
+    readonly target: readonly ['AppImage']
+  }
   readonly beforeBuild: () => Promise<boolean>
   readonly beforePack: (context: BeforePackContext) => Promise<void>
   readonly afterPack: (context: AfterPackContext) => Promise<void>

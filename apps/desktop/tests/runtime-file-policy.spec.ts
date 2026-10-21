@@ -159,3 +159,18 @@ it.each([
     expect(omitted === undefined).toBe(candidate === engine)
   }
 })
+
+it('replaces sharp’s native Linux engine with the WebAssembly build Electron can run', () => {
+  const linux = { platform: 'linux' as const, arch: 'x64' }
+  for (const path of [
+    '@img/sharp-linux-x64/lib/sharp-linux-x64-0.35.5.node',
+    '@img/sharp-libvips-linux-x64/lib/libvips-cpp.so.8.18.7',
+    '@img/sharp-linux-arm64/lib/sharp-linux-arm64-0.35.5.node',
+  ]) expect(desktopRuntimeFileExclusion(path, linux, 'wasm')).toMatch(/Electron GLib/u)
+  expect(desktopRuntimeFileExclusion('@img/sharp-wasm32/lib/sharp-wasm32-0.35.5.node.wasm', linux, 'wasm'))
+    .toBeUndefined()
+  expect(desktopRuntimeFileExclusion('@img/sharp-linux-x64/package.json', linux, 'wasm')).toBeUndefined()
+  // macOS and Windows run sharp's native build in Electron without the GLib conflict.
+  expect(desktopRuntimeFileExclusion('@img/sharp-linux-x64/lib/sharp-linux-x64-0.35.5.node', windows, 'win32-x64'))
+    .toBeUndefined()
+})

@@ -33,7 +33,7 @@ const UPDATE_ENVIRONMENTS = {
   },
 }
 
-const UPDATE_TARGETS = new Set(['mac-arm64', 'mac-x64', 'win-x64'])
+const UPDATE_TARGETS = new Set(['mac-arm64', 'mac-x64', 'win-x64', 'linux-x64'])
 
 /**
  * Resolve the update deployment, defaulting local release work to test.
@@ -52,7 +52,7 @@ export function resolveDesktopAutoUpdateEnvironment(env) {
  * Resolve one supported platform and architecture to its update directory.
  * @param {NodeJS.Platform} platform - Target Node.js platform.
  * @param {string} arch - Target Node.js architecture.
- * @returns {'mac-arm64' | 'mac-x64' | 'win-x64'} Update target directory.
+ * @returns {'mac-arm64' | 'mac-x64' | 'win-x64' | 'linux-x64'} Update target directory.
  */
 export function resolveDesktopAutoUpdateTarget(platform, arch) {
   const os = platform === 'darwin' ? 'mac' : platform === 'win32' ? 'win' : platform
@@ -65,7 +65,7 @@ export function resolveDesktopAutoUpdateTarget(platform, arch) {
 
 /**
  * Return the local completion record filename for one packaged target.
- * @param {'mac-arm64' | 'mac-x64' | 'win-x64'} target - Supported release target.
+ * @param {'mac-arm64' | 'mac-x64' | 'win-x64' | 'linux-x64'} target - Supported release target.
  * @returns {string} Filename stored beside electron-builder artifacts.
  */
 export function desktopBuildRecordFilename(target) {
@@ -86,11 +86,11 @@ export function desktopUpdateMetadataFilename(version, platform, channel = 'nigh
   if (valid(version) === null) {
     throw new Error(`desktop auto-update: invalid Desktop version ${JSON.stringify(version)}`)
   }
-  if (platform !== 'darwin' && platform !== 'win32') {
+  if (platform !== 'darwin' && platform !== 'win32' && platform !== 'linux') {
     throw new Error(`desktop auto-update: unsupported metadata platform ${platform}`)
   }
   resolveDesktopUpdateChannel({ DSH_DESKTOP_UPDATE_CHANNEL: channel })
-  return `${channel}${platform === 'darwin' ? '-mac' : ''}.yml`
+  return `${channel}${platform === 'darwin' ? '-mac' : platform === 'linux' ? '-linux' : ''}.yml`
 }
 
 /**
