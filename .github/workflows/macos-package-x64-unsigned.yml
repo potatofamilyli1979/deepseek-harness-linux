@@ -26,14 +26,15 @@ jobs:
         shell: bash
     env:
       DSH_TELEMETRY_DISABLED: '1'
-      # Keep Node's compile cache and temporary files out of the repository volume.
-      NODE_COMPILE_CACHE: ${{ runner.temp }}/node-compile-cache
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
           clean: true
+
+      - name: Configure build caches
+        run: echo "NODE_COMPILE_CACHE=${{ runner.temp }}/node-compile-cache" >> "$GITHUB_ENV"
 
       # The image ships Xcode simulators and an Android SDK that this build never uses.
       - name: Free disk space
