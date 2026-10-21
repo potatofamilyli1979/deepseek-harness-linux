@@ -1,0 +1,125 @@
+# Build an unsigned Intel (x64) macOS DMG on a free standard GitHub-hosted runner.
+#
+# The official macOS release targets Apple Silicon. This workflow packages the same
+# sources for Intel Macs; it is intentionally unsigned and unnotarized, so macOS
+# Gatekeeper still needs a right-click Open (or xattr -dr com.apple.quarantine).
+# Manual dispatch only: every run downloads and rebuilds the complete runtime.
+
+name: Package Desktop · macOS Intel (unsigned)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-desktop-package-x64-unsigned
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: macos-15-intel
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: bash
+    env:
+      DSH_TELEMETRY_DISABLED: '1'
+      # Keep Node's compile cache and temporary files out of the repository volume.
+      NODE_COMPILE_CACHE: ${{ runner.temp }}/node-compile-cache
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          clean: true
+
+      # The image ships Xcode simulators and an Android SDK that this build never uses.
+      - name: Free disk space
+        run: |
+          set -x
+          df -h /
+          sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes/* || true
+          sudo rm -rf /Library/Developer/CoreSimulator/Devices/* || true
+          sudo rm -rf "$HOME/Library/Developer/Xcode/DerivedData" || true
+          sudo rm -rf /usr/local/lib/android "$HOME/Library/Android" || true
+          sudo rm -rf "$HOME/Library/Caches/Homebrew" || true
+          df -h /
+
+      - uses: pnpm/action-setup@v5.0.0
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '24'
+
+      - name: Report build host
+        run: |
+          sw_vers
+          uname -m
+          xcode-select -p
+          node -v
+          pnpm -v
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Report disk usage and prune the store
+        run: |
+          df -h /
+          du -sh . 2>/dev/null || true
+          pnpm store prune
+          df -h /
+
+      - name: Check packaging configuration and toolchain
+        run: pnpm run package:desktop:mac:x64:unsigned --check
+
+      - name: Build unsigned Intel DMG
+        run: pnpm run package:desktop:mac:x64:unsigned
+
+      - name: Collect the DMG
+        id: artifact
+        run: |
+          set -euo pipefail
+          directory=apps/desktop/.desktop-build/targets/mac-x64/unsigned-artifacts
+          ls -la "$directory"
+          shopt -s nullglob
+          dmgs=("$directory"/*.dmg)
+          test "${#dmgs[@]}" -eq 1
+          dmg=${dmgs[0]}
+          relative=${dmg#"$PWD"/}
+          shasum -a 256 "$dmg" | tee "$relative.sha256"
+          {
+            echo "### Unsigned macOS Intel DMG"
+            echo
+            echo "- File: \`$(basename "$dmg")\`"
+            echo "- SHA-256: \`$(cut -d' ' -f1 "$relative.sha256")\`"
+            echo "- Install: right-click the app and choose Open, or run"
+            echo "  \`xattr -dr com.apple.quarantine \"/Applications/DeepSeek Harness.app\"\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "dmg=$relative" >> "$GITHUB_OUTPUT"
+          echo "sha256=$relative.sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Upload unsigned Intel DMG
+        if: success()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: macos-x64-unsigned-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ steps.artifact.outputs.dmg }}
+            ${{ steps.artifact.outputs.sha256 }}
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload packaging diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: macos-x64-package-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/desktop/.desktop-build/packaging-runs/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
