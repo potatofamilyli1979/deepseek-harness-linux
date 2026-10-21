@@ -12,6 +12,11 @@ import { DesktopHostProcess } from '../src/host-process.ts'
 import { createPluginProfile } from '../src/project-manager.ts'
 import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 
+/** Cold LibreOffice starts can exceed the product's 60 s default on slow build hosts. */
+const OFFICE_CONVERSION_TIMEOUT_MS = 180_000
+/** Outlive the conversion deadline so its timeout, not an aborted request, reports the failure. */
+const OFFICE_REQUEST_TIMEOUT_MS = OFFICE_CONVERSION_TIMEOUT_MS + 60_000
+
 /**
  * Check CLI package operations, Host startup, its frontend, external plugins and real Office-to-PDF conversion.
  * @param root - Materialized dsh resources.
@@ -144,7 +149,16 @@ export function apply(ctx) {
     manifest.dependencies = { ...manifest.dependencies, [pluginName]: `file:${plugin}` }
     manifest.dsh.profile.bundles.push(pluginName)
     writeFileSync(join(profile, 'package.json'), JSON.stringify(manifest))
-    writeFileSync(join(profile, 'cordis.patch.yml'), '- id: webserver\n  config:\n    host: 127.0.0.1\n    port: 0\n')
+    writeFileSync(join(profile, 'cordis.patch.yml'), [
+      '- id: webserver',
+      '  config:',
+      '    host: 127.0.0.1',
+      '    port: 0',
+      '- id: office-to-pdf',
+      '  config:',
+      `    timeoutMs: ${String(OFFICE_CONVERSION_TIMEOUT_MS)}`,
+      '',
+    ].join('\n'))
     const ready = await Promise.race([host.start(), new Promise<never>((_, reject) => {
       timer = setTimeout(() => { reject(new Error('desktop runtime: Host readiness exceeded 120 seconds')) }, 120_000)
     })])
@@ -167,7 +181,7 @@ export function apply(ctx) {
     }
     for (const { extension } of inputs) {
       const converted = await fetch(new URL(`/desktop-smoke-office/${extension}`, ready.url), {
-        headers: { cookie }, signal: AbortSignal.timeout(120_000),
+        headers: { cookie }, signal: AbortSignal.timeout(OFFICE_REQUEST_TIMEOUT_MS),
       })
       if (!converted.ok) throw new Error(`desktop runtime: ${extension} conversion failed: ${await converted.text()}`)
       const pdf = Buffer.from(await converted.arrayBuffer())
