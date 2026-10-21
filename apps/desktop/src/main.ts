@@ -1012,8 +1012,14 @@ async function main(): Promise<void> {
   const quitConfirmation = new DesktopQuitConfirmation({
     locale: () => locale,
     inspect: () => backend.host?.inspectQuit(),
-    // No owner window: a hidden window stays hidden and the native box is its own top-level window.
-    show: options => dialog.showMessageBox(options),
+    // Linux stacks a parentless GTK dialog behind the application window, so a visible window owns
+    // the box and keeps it in front. A hidden window keeps the ownerless box so it stays hidden.
+    show: (options) => {
+      const owner = process.platform === 'linux' ? currentDialogWindow() : undefined
+      return owner === undefined || owner.isDestroyed() || !owner.isVisible() || owner.isMinimized()
+        ? dialog.showMessageBox(options)
+        : dialog.showMessageBox(owner, options)
+    },
     // macOS raises the open alert with the application; Electron exposes no handle to the Windows task
     // dialog, so a repeated request there only joins the open decision.
     focus: () => { if (process.platform === 'darwin') app.focus({ steal: true }) },

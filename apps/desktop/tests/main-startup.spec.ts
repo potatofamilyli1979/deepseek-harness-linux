@@ -1302,11 +1302,12 @@ describe('desktop main startup', () => {
     host.inspectQuit.mockResolvedValue({ activeTasks: false, scheduledTasks: false })
     ;(template[2] as { click: () => void }).click()
     await vi.advanceTimersByTimeAsync(0)
-    expect(harness.dialog.showMessageBox).toHaveBeenLastCalledWith(expect.objectContaining({
+    // The visible window owns the modal box so Linux keeps the confirmation in front of it.
+    expect(harness.dialog.showMessageBox).toHaveBeenLastCalledWith(window, expect.objectContaining({
       message: en.quitTitle, buttons: [en.quit, en.cancel], defaultId: 0, cancelId: 1,
     }))
     // An idle tray quit still asks, with no task explanation; the default Cancel keeps the app running.
-    expect(harness.dialog.showMessageBox.mock.calls.at(-1)![0]).not.toHaveProperty('detail')
+    expect(harness.dialog.showMessageBox.mock.calls.at(-1)![1]).not.toHaveProperty('detail')
     expect(harness.app.quit).not.toHaveBeenCalled()
     expect(host.stop).not.toHaveBeenCalled()
   })
