@@ -1286,6 +1286,31 @@ describe('desktop main startup', () => {
     expect(harness.trays[0]!.setContextMenu.mock.calls.length).toBe(relabels + 1)
   })
 
+  it('keeps a Linux tray for opening the window and confirms its explicit quit once', async () => {
+    vi.stubGlobal('process', { ...process, platform: 'linux', arch: 'x64', resourcesPath: 'desktop-test-resources' })
+    const host = await readyWorkspace()
+    const window = harness.windows[0]!
+    expect(harness.trays).toHaveLength(1)
+    expect(harness.trays[0]!.image).toEqual({ path: join('desktop-test-resources', 'tray.png') })
+    // Linux installs no application menu, so the tray owns the first context menu of the run.
+    const template = harness.menu.mock.calls[0]![0]
+    expect(template.map(item => item.type === 'separator' ? 'separator' : item.label))
+      .toEqual([en.openApplication, 'separator', en.quitApplication])
+    window.show.mockClear()
+    harness.trays[0]!.emit('click')
+    expect(window.show).toHaveBeenCalledOnce()
+    host.inspectQuit.mockResolvedValue({ activeTasks: false, scheduledTasks: false })
+    ;(template[2] as { click: () => void }).click()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(harness.dialog.showMessageBox).toHaveBeenLastCalledWith(expect.objectContaining({
+      message: en.quitTitle, buttons: [en.quit, en.cancel], defaultId: 0, cancelId: 1,
+    }))
+    // An idle tray quit still asks, with no task explanation; the default Cancel keeps the app running.
+    expect(harness.dialog.showMessageBox.mock.calls.at(-1)![0]).not.toHaveProperty('detail')
+    expect(harness.app.quit).not.toHaveBeenCalled()
+    expect(host.stop).not.toHaveBeenCalled()
+  })
+
   it('keeps the workspace visible while acknowledgement is pending and ignores a destroyed window', async () => {
     await readyWorkspace()
     const window = harness.windows[0]!

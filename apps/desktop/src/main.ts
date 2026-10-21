@@ -1001,14 +1001,10 @@ async function main(): Promise<void> {
     tray?.relabel()
   }
   refreshApplicationMenu()
-  const trayIconPath = development ? join(app.getAppPath(), 'resources', 'tray-windows.ico') : join(process.resourcesPath, 'tray.ico')
-  if (process.platform === 'win32') {
-    // The tray is the way back to a hidden window; without it, relaunching the application still focuses it.
-    try {
-      tray = new DesktopTray({ iconPath: trayIconPath, locale: currentDesktopLocale,
-        open: () => { focusPrimaryWindow() }, quit: () => { app.quit() } })
-    } catch (error) { console.warn('desktop tray: unavailable', error) }
-  }
+  const trayIconFile = process.platform === 'win32' ? 'tray-windows.ico' : 'tray-linux.png'
+  const trayIconPackaged = process.platform === 'win32' ? 'tray.ico' : 'tray.png'
+  const trayIconPath = development ? join(app.getAppPath(), 'resources', trayIconFile)
+    : join(process.resourcesPath, trayIconPackaged)
   const backgroundNotice = process.platform === 'win32'
     ? new DesktopBackgroundNotice({ markerPath: join(app.getPath('userData'), 'background-close-confirmed'),
       locale: () => locale, show: ordinaryMessageBox, focus: () => { updateDialog.focus() } })
@@ -1025,6 +1021,22 @@ async function main(): Promise<void> {
     // size directly, where the 1024 px PNG would be scaled down by GDI.
     ...(process.platform === 'win32' ? { icon: nativeImage.createFromPath(trayIconPath) } : {}),
   })
+  if (process.platform === 'win32' || process.platform === 'linux') {
+    // Windows and Linux hide the window on close, so the tray is the way back; Linux also installs
+    // no application menu, making the tray's Quit its only explicit quit entry.
+    try {
+      tray = new DesktopTray({ iconPath: trayIconPath, locale: currentDesktopLocale,
+        open: () => { focusPrimaryWindow() },
+        quit: () => {
+          if (quitting) return
+          void quitConfirmation.confirm({ confirmWhenIdle: true }).then((approved) => {
+            if (!approved || quitting) return
+            skipQuitConfirmation = true
+            app.quit()
+          })
+        } })
+    } catch (error) { console.warn('desktop tray: unavailable', error) }
+  }
 
   if (process.platform === 'win32') {
     ipcMain.handle(DESKTOP_IPC.windowsMenu, (event, name: unknown, x: unknown, y: unknown) => {

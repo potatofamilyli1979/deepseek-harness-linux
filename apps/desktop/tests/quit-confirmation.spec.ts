@@ -39,6 +39,19 @@ describe('DesktopQuitConfirmation', () => {
     expect([...idle.shown, ...starting.shown]).toEqual([])
   })
 
+  it('asks once with no detail line when an explicit tray quit requests confirmation while idle', async () => {
+    const idle = setup('linux', async () => ({ activeTasks: false, scheduledTasks: false }), 'en')
+    expect(await idle.confirmation.confirm({ confirmWhenIdle: true })).toBe(true)
+    const starting = setup('linux', () => undefined, 'en')
+    expect(await starting.confirmation.confirm({ confirmWhenIdle: true })).toBe(true)
+    const expected = {
+      type: 'warning', title: 'DeepSeek Harness', message: 'Quit DeepSeek Harness?',
+      buttons: ['Quit', 'Cancel'], defaultId: 0, cancelId: 1, noLink: true,
+    }
+    expect(idle.shown).toEqual([expected])
+    expect(starting.shown).toEqual([expected])
+  })
+
   it('shows the macOS alert with the warning icon, Chinese copy, and Quit as the default right-hand button', async () => {
     const f = setup('darwin', async () => ({ activeTasks: true, scheduledTasks: true }))
     expect(await f.confirmation.confirm()).toBe(true)

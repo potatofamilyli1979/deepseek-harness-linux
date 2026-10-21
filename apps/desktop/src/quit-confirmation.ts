@@ -34,6 +34,12 @@ export interface DesktopQuitConfirmationOptions {
   readonly icon?: NativeImage
 }
 
+/** Per-request choice of whether an idle quit still needs a confirmation. */
+export interface DesktopQuitDecisionOptions {
+  /** Ask even when the Host reports nothing to interrupt; the box then has no detail line. */
+  readonly confirmWhenIdle?: boolean
+}
+
 /** One quit decision at a time; repeated quit requests join the open confirmation instead of stacking. */
 export class DesktopQuitConfirmation {
   private pending: Promise<boolean> | undefined
@@ -45,15 +51,16 @@ export class DesktopQuitConfirmation {
   /**
    * Decide whether the quit may proceed. The inspection runs once per decision; work that starts or ends
    * while the confirmation is open does not change its copy, and approval never re-inspects.
+   * @param options - Whether an idle quit still asks; the tray's explicit Quit does.
    * @returns true to quit now, false when the user cancelled.
    */
-  confirm(): Promise<boolean> {
+  confirm(options: DesktopQuitDecisionOptions = {}): Promise<boolean> {
     if (this.disposed) return Promise.resolve(false)
     if (this.pending !== undefined) {
       this.options.focus()
       return this.pending
     }
-    const pending = this.decide().finally(() => { if (this.pending === pending) this.pending = undefined })
+    const pending = this.decide(options).finally(() => { if (this.pending === pending) this.pending = undefined })
     this.pending = pending
     return pending
   }
@@ -65,15 +72,20 @@ export class DesktopQuitConfirmation {
    */
   dispose(): void { this.disposed = true }
 
-  private async decide(): Promise<boolean> {
+  private async decide(options: DesktopQuitDecisionOptions): Promise<boolean> {
     const inspection = this.options.inspect()
-    if (inspection === undefined) return true
-    const prompt = resolveDesktopQuitPrompt(await inspection.catch((error: unknown) => {
-      console.warn('desktop quit: task inspection unavailable', error)
-      return 'unknown' as const
-    }))
+    let prompt: DesktopQuitPrompt
+    if (inspection === undefined) {
+      // Only an explicit tray Quit asks when no Host is ready; every other entry proceeds.
+      if (options.confirmWhenIdle !== true) return true
+    } else {
+      prompt = resolveDesktopQuitPrompt(await inspection.catch((error: unknown) => {
+        console.warn('desktop quit: task inspection unavailable', error)
+        return 'unknown' as const
+      }))
+      if (prompt === undefined && options.confirmWhenIdle !== true) return true
+    }
     if (this.disposed) return false
-    if (prompt === undefined) return true
     const { messages } = this.options.locale()
     const windows = (this.options.platform ?? process.platform) === 'win32'
     // Button order follows each platform: macOS lays buttons out right-to-left from index 0, so
@@ -83,7 +95,7 @@ export class DesktopQuitConfirmation {
       ...(windows && this.options.icon !== undefined ? { icon: this.options.icon } : {}),
       title: messages.aboutProduct,
       message: messages.quitTitle,
-      detail: messages[prompt],
+      ...(prompt === undefined ? {} : { detail: messages[prompt] }),
       buttons: [messages.quit, messages.cancel],
       defaultId: 0,
       cancelId: 1,

@@ -1,10 +1,11 @@
 /**
- * Render the Windows tray icon with an enlarged whale from `resources/icon-windows.svg`.
+ * Render the tray icons with an enlarged whale from `resources/icon-windows.svg`.
  *
- * The tray shows the icon at 16 logical pixels, so Windows picks one of the
- * bundled bitmaps by display scale. Each size is rasterized from the vector
- * source separately instead of downscaling one large bitmap, which keeps edges
- * crisp at every scale. The committed `resources/tray-windows.ico` is the output;
+ * Windows shows the icon at 16 logical pixels, so the ICO bundles one bitmap per
+ * display scale; Linux AppIndicator panels draw one 32 px PNG. Each size is
+ * rasterized from the vector source separately instead of downscaling one large
+ * bitmap, which keeps edges crisp at every scale. The committed
+ * `resources/tray-windows.ico` and `resources/tray-linux.png` are the outputs;
  * rerun `pnpm run render:tray-icon` in `apps/desktop` after changing the vector source.
  */
 
@@ -16,10 +17,18 @@ import sharp from 'sharp'
 /** Bitmap edge lengths bundled in the tray icon: 16 px at 100 % through 400 % display scale. */
 export const TRAY_ICON_SIZES = [16, 20, 24, 32, 40, 48, 64] as const
 
-/** Vector source and committed output of the tray icon. */
+/** Vector source and committed output of the Windows tray icon. */
 export const TRAY_ICON_PATHS = {
   source: fileURLToPath(new URL('../resources/icon-windows.svg', import.meta.url)),
   output: fileURLToPath(new URL('../resources/tray-windows.ico', import.meta.url)),
+} as const
+
+/** Linux AppIndicator panels draw the tray at 22–24 logical pixels; 32 px scales down cleanly. */
+export const TRAY_LINUX_ICON_SIZE = 32
+
+/** Committed Linux tray bitmap, rendered from the same vector source as the Windows ICO. */
+export const TRAY_LINUX_ICON_PATHS = {
+  output: fileURLToPath(new URL('../resources/tray-linux.png', import.meta.url)),
 } as const
 
 /** Coordinate space of the vector source; sharp's SVG density is scaled against it. */
@@ -92,21 +101,39 @@ export function unpackIco(ico: Buffer): IcoEntry[] {
 }
 
 /**
+ * Apply the tray-only glyph enlargement to the vector source.
+ * @param svg - SVG document with a 1024-unit square viewBox and a `tray-glyph` group.
+ * @returns SVG bytes scaled around the application tile center, retaining background and aspect ratio.
+ */
+function trayGlyph(svg: Buffer): Buffer {
+  const source = svg.toString('utf8')
+  const glyph = '<g id="tray-glyph"'
+  if (!source.includes(glyph)) throw new Error('tray icon: SVG requires a tray-glyph group')
+  return Buffer.from(source.replace(glyph, `${glyph} transform="translate(552 544) scale(1.2) translate(-552 -544)"`))
+}
+
+/**
  * Rasterize the vector source at each tray size.
  * @param svg - SVG document with a 1024-unit square viewBox and a `tray-glyph` group.
  * @param sizes - Bitmap edges to render.
  * @returns PNG entries in the given order.
  */
 export async function renderTrayIconEntries(svg: Buffer, sizes: readonly number[] = TRAY_ICON_SIZES): Promise<IcoEntry[]> {
-  const source = svg.toString('utf8')
-  const glyph = '<g id="tray-glyph"'
-  if (!source.includes(glyph)) throw new Error('tray icon: SVG requires a tray-glyph group')
-  // Scale around the application tile center, retaining its background and the whale's aspect ratio.
-  const tray = Buffer.from(source.replace(glyph, `${glyph} transform="translate(552 544) scale(1.2) translate(-552 -544)"`))
+  const tray = trayGlyph(svg)
   return Promise.all(sizes.map(async size => ({
     size,
     png: await sharp(tray, { density: SOURCE_DENSITY * size / SOURCE_EDGE }).resize(size, size).png().toBuffer(),
   })))
+}
+
+/**
+ * Render the Linux tray bitmap.
+ * @param svg - SVG document with a 1024-unit square viewBox and a `tray-glyph` group.
+ * @param size - Square bitmap edge in pixels.
+ * @returns a PNG stream.
+ */
+export async function renderTrayPng(svg: Buffer, size: number = TRAY_LINUX_ICON_SIZE): Promise<Buffer> {
+  return sharp(trayGlyph(svg), { density: SOURCE_DENSITY * size / SOURCE_EDGE }).resize(size, size).png().toBuffer()
 }
 
 function pngDimensions(png: Buffer): { width: number; height: number } {
@@ -115,9 +142,11 @@ function pngDimensions(png: Buffer): { width: number; height: number } {
 }
 
 async function main(): Promise<void> {
-  const entries = await renderTrayIconEntries(await readFile(TRAY_ICON_PATHS.source))
+  const svg = await readFile(TRAY_ICON_PATHS.source)
+  const entries = await renderTrayIconEntries(svg)
   await writeFile(TRAY_ICON_PATHS.output, packIco(entries))
-  console.info(`tray icon: wrote ${TRAY_ICON_PATHS.output} with ${entries.map(entry => String(entry.size)).join(', ')} px bitmaps`)
+  await writeFile(TRAY_LINUX_ICON_PATHS.output, await renderTrayPng(svg))
+  console.info(`tray icon: wrote ${TRAY_ICON_PATHS.output} with ${entries.map(entry => String(entry.size)).join(', ')} px bitmaps and ${TRAY_LINUX_ICON_PATHS.output} at ${String(TRAY_LINUX_ICON_SIZE)} px`)
 }
 
 if (process.argv[1] !== undefined && import.meta.filename === resolve(process.argv[1])) await main()

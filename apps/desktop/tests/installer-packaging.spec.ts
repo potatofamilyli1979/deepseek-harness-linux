@@ -99,4 +99,18 @@ describe('installer preparation preserves application dependencies', () => {
     const packaged = new Set(config.files.filter((entry): entry is string => typeof entry === 'string'))
     for (const name of referenced) expect(packaged.has(`lib/${name}`)).toBe(true)
   })
+
+  it('ships the Linux tray bitmap instead of the Windows ICO', async () => {
+    const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
+    const config = createElectronBuilderConfig({
+      DSH_DESKTOP_APP_ID: 'com.deepseek.harness',
+      DSH_DESKTOP_UNSIGNED: '1',
+      DSH_DESKTOP_TARGET_PLATFORM: 'linux',
+      DSH_DESKTOP_TARGET_ARCH: 'x64',
+    }, 'linux', 'x64')
+    const tray = config.extraResources.find(resource => resource.to === 'tray.png')
+    expect(tray).toBeDefined()
+    expect(readFileSync(tray!.from)).toEqual(readFileSync(new URL('../resources/tray-linux.png', import.meta.url)))
+    expect(config.extraResources.find(resource => resource.to === 'tray.ico')).toBeUndefined()
+  })
 })
