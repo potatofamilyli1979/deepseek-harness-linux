@@ -80,14 +80,29 @@ jobs:
       - name: Build unsigned Intel DMG
         run: pnpm run package:desktop:mac:x64:unsigned
 
+      # The packaged runtime smoke runs after electron-builder; keep the DMG it already
+      # produced even when a slow-runner Office conversion times out.
       - name: Collect the DMG
         id: artifact
+        if: always()
         run: |
           set -euo pipefail
           directory=apps/desktop/.desktop-build/targets/mac-x64/unsigned-artifacts
-          ls -la "$directory"
+          if [ ! -d "$directory" ]; then
+            echo "No artifact directory; the build stopped before packaging."
+            echo "dmg=" >> "$GITHUB_OUTPUT"
+            echo "sha256=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          ls -la "$directory" || true
           shopt -s nullglob
           dmgs=("$directory"/*.dmg)
+          if [ "${#dmgs[@]}" -eq 0 ]; then
+            echo "No DMG; the build stopped before packaging."
+            echo "dmg=" >> "$GITHUB_OUTPUT"
+            echo "sha256=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           test "${#dmgs[@]}" -eq 1
           dmg=${dmgs[0]}
           relative=${dmg#"$PWD"/}
@@ -103,8 +118,13 @@ jobs:
           echo "dmg=$relative" >> "$GITHUB_OUTPUT"
           echo "sha256=$relative.sha256" >> "$GITHUB_OUTPUT"
 
+      - name: Note a late failure in the summary
+        if: failure() && steps.artifact.outputs.dmg != ''
+        run: |
+          echo "- Warning: the run failed after this DMG was built; check the packaging logs and verify it before relying on it." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload unsigned Intel DMG
-        if: success()
+        if: always() && steps.artifact.outputs.dmg != ''
         uses: actions/upload-artifact@v7.0.1
         with:
           name: macos-x64-unsigned-${{ github.run_id }}-${{ github.run_attempt }}
