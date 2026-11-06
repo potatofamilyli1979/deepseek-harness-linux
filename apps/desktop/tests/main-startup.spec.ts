@@ -559,6 +559,11 @@ describe('desktop main startup', () => {
     harness.app.isPackaged = packaged
     vi.spyOn(harness.app, 'getPreferredSystemLanguages').mockReturnValue([locale])
     await readyForUpdate()
+    // Linux installs no application menu at all; its dedicated test asserts the null menu.
+    if (platform === 'linux') {
+      expect(harness.menu.setApplicationMenu).toHaveBeenLastCalledWith(null)
+      return
+    }
     const messages = locale === 'en' ? en : zh
     const menu = applicationMenuItems()
     const visible = menu.filter(item => item.visible !== false)
