@@ -569,7 +569,7 @@ describe('desktop main startup', () => {
     const visible = menu.filter(item => item.visible !== false)
     expect(visible.map(item => item.role === 'quit' ? 'quit' : item.label ?? item.type)).toEqual([
       messages.aboutMenu, 'separator', messages.checkUpdatesMenu,
-      ...platform === 'linux' ? [] : [messages.cliCommandMenu],
+      messages.cliCommandMenu,
       'separator', ...packaged ? [] : [messages.reloadPageMenu, messages.restartAppHostMenu],
       messages.toggleDevToolsMenu, 'separator',
       ...platform === 'darwin' ? [messages.hideApplication, messages.hideOtherApplications, messages.showAllApplications, 'separator'] : [],
