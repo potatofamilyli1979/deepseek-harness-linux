@@ -2,8 +2,10 @@
 
 import { delimiter, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { createRequire, syncBuiltinESMExports } from 'node:module'
 import type { PluginOperationRunId } from '@deepseek-ai/dsh-plugin-manager/diagnostic'
 import { formatFatalDiagnostic } from './fatal-diagnostic.ts'
+import { restoreMissingArchiveEntryResults } from './archive-fs.ts'
 import { loadLayeredEnv, loadProfileDirectory, reportSkippedBundles } from '@deepseek-ai/dsh-app-boot'
 import { runProfile } from '@deepseek-ai/dsh/profile-boot'
 import type {} from '@deepseek-ai/dsh-client-connection'
@@ -17,6 +19,10 @@ import { installPlatformSessionPublisher } from './platform-session.ts'
 import { installOperationDiagnostics } from './operation-diagnostics.ts'
 
 async function main(): Promise<void> {
+  // LibreOfficeKit probes for a Linux engine with `lstatSync(..., { throwIfNoEntry: false }) !== undefined`;
+  // inside an ASAR Electron returns null for an absent entry, so restore Node's documented result before
+  // loading the profile and let the kit fall back to WebAssembly instead of reporting a missing package.
+  restoreMissingArchiveEntryResults(createRequire(import.meta.url)('node:fs'), syncBuiltinESMExports)
   const runId = randomUUID() as PluginOperationRunId
   if (process.connected) process.send?.({ type: 'starting', runId }, (error) => { if (error !== null) console.error(error) })
   const runtimeDir = process.argv[2] as string
